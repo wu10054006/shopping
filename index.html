@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="購物清單" />
+  <meta name="theme-color" content="#FAF8F5" />
+  <title>旅遊購物清單小幫手 | Travel Shopping Planner</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #FAF8F5;
+      color: #2C2A29;
+      margin: 0;
+      padding: 0;
+      padding-bottom: 96px;
+    }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .card-shadow { box-shadow: 0 4px 20px -2px rgba(44, 42, 41, 0.06); }
+    .modal-backdrop { background-color: rgba(28, 27, 26, 0.65); backdrop-filter: blur(4px); }
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .animate-slide-up { animation: slideUp 0.22s ease-out forwards; }
+  </style>
+</head>
+<body>
+  <div id="app" class="max-w-md mx-auto min-h-screen relative"></div>
+
+  <script>
+    // --- 預設國家與匯率設定 ---
+    const COUNTRIES = {
+      JP: { code: 'JP', name: '日本', flag: '🇯🇵', currency: 'JPY', symbol: '¥', defaultRate: 0.215, askText: 'すみません、この商品はありますか？', askSub: '請問有這個商品嗎？（日文）', defaultStores: ['唐吉訶德', '松本清', '大國藥妝', 'LOFT', '3COINS', 'Uniqlo', '7-11/全家', '機場免稅'] },
+      KR: { code: 'KR', name: '韓國', flag: '🇰🇷', currency: 'KRW', symbol: '₩', defaultRate: 0.0235, askText: '실례합니다, 혹시 이 상품 있나요?', askSub: '請問有這個商品嗎？（韓文）', defaultStores: ['Olive Young', '大創 Daiso', '樂天超市', '聖水洞門市', '現代百貨', 'CU/GS25', '機場免稅'] },
+      TH: { code: 'TH', name: '泰國', flag: '🇹🇭', currency: 'THB', symbol: '฿', defaultRate: 0.94, askText: 'ขอโทษนะคะ/ครับ มีสินค้านี้ไหมคะ/ครับ?', askSub: '請問有這個商品嗎？（泰文）', defaultStores: ['Big C', '7-11', 'Boots', 'Siam Paragon', '洽圖洽市集', '機場免稅'] },
+      EU: { code: 'EU', name: '歐洲', flag: '🇪🇺', currency: 'EUR', symbol: '€', defaultRate: 34.8, askText: 'Excuse me, do you have this item in stock?', askSub: '請問這個商品有現貨嗎？（英文）', defaultStores: ['藥妝店', '超市', '百貨專櫃', 'Outlet', '機場免稅'] },
+      US: { code: 'US', name: '美國', flag: '🇺🇸', currency: 'USD', symbol: '$', defaultRate: 32.2, askText: 'Excuse me, could you help me find this item?', askSub: '請問能幫我找這個商品嗎？（英文）', defaultStores: ['Target', 'Trader Joe's', 'Sephora', 'Costco', 'Outlet'] }
+    };
+
+    const CATEGORIES = [
+      { id: 'all', name: '全部', icon: '🛍️' },
+      { id: 'cosmetics', name: '藥妝保養', icon: '💄' },
+      { id: 'snacks', name: '零食伴手禮', icon: '🍪' },
+      { id: 'fashion', name: '服飾鞋包', icon: '👗' },
+      { id: 'daily', name: '生活雜貨', icon: '🏠' },
+      { id: 'electronics', name: '電器3C', icon: '🔌' },
+      { id: 'other', name: '其他好物', icon: '✨' }
+    ];
+
+    const RECIPIENTS = ['自用', '家人', '伴手禮/同事', '代購'];
+
+    const DEFAULT_ITEMS = [
+      {
+        id: 'sample-1',
+        country: 'JP',
+        name: '合利他命 EX Plus 270錠',
+        category: 'cosmetics',
+        location: '松本清',
+        quantity: 2,
+        price: 5980,
+        recipient: '家人',
+        priority: 'must',
+        taxFree: true,
+        bought: false,
+        note: '幫爸媽買，記得比價未稅價是否滿5000日圓',
+        image: ''
+      },
+      {
+        id: 'sample-2',
+        country: 'JP',
+        name: '砂糖奶油樹 夾心餅乾 (14入)',
+        category: 'snacks',
+        location: '機場免稅',
+        quantity: 3,
+        price: 1134,
+        recipient: '伴手禮/同事',
+        priority: 'must',
+        taxFree: true,
+        bought: false,
+        note: '分送辦公室同事',
+        image: ''
+      },
+      {
+        id: 'sample-3',
+        country: 'KR',
+        name: 'Torriden 玻尿酸保濕精華液組',
+        category: 'cosmetics',
+        location: 'Olive Young',
+        quantity: 1,
+        price: 26500,
+        recipient: '自用',
+        priority: 'normal',
+        taxFree: true,
+        bought: false,
+        note: '找 1+1 補充包優惠組合',
+        image: ''
+      }
+    ];
+
+    // --- 狀態管理與本機儲存 ---
+    const STORAGE_KEY = 'TRAVEL_SHOPPING_PLANNER_V1';
+
+    let state = {
+      currentCountry: 'JP',
+      rates: { JP: 0.215, KR: 0.0235, TH: 0.94, EU: 34.8, US: 32.2 },
+      selectedCategory: 'all',
+      selectedStore: 'all',
+      selectedStatus: 'all', // all, pending, bought
+      searchQuery: '',
+      items: [],
+      modal: null, // 'add', 'edit', 'rate', 'ask', 'backup'
+      editingItem: null,
+      askingItem: null,
+      quickCalcInput: ''
+    };
+
+    function loadState() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          state.currentCountry = parsed.currentCountry || 'JP';
+          state.rates = { ...state.rates, ...(parsed.rates || {}) };
+          state.items = Array.isArray(parsed.items) ? parsed.items : DEFAULT_ITEMS;
+        } else {
+          state.items = DEFAULT_ITEMS;
+          saveState();
+        }
+      } catch (e) {
+        console.error('載入資料失敗', e);
+        state.items = DEFAULT_ITEMS;
+      }
+    }
+
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          currentCountry: state.currentCountry,
+          rates: state.rates,
+          items: state.items
+        }));
+      } catch (e) {
+        alert('儲存空間已滿！建議刪除部分高畫質圖片或先匯出備份檔。');
+      }
+    }
+
+    // --- 工具函式 ---
+    function formatNumber(num) {
+      return Math.round(num || 0).toLocaleString('zh-TW');
+    }
+
+    function getCategoryObj(id) {
+      return CATEGORIES.find(c => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
+    }
+
+    function compressImage(file, callback) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 550;
+          let width = img.width;
+          let height = img.height;
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height *= MAX_SIZE / width;
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width *= MAX_SIZE / height;
+              height = MAX_SIZE;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+          callback(dataUrl);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // --- 動作處理 ---
+    function setCountry(code) {
+      state.currentCountry = code;
+      state.selectedStore = 'all';
+      saveState();
+      render();
+    }
+
+    function setCategory(catId) {
+      state.selectedCategory = catId;
+      render();
+    }
+
+    function setStore(store) {
+      state.selectedStore = store;
+      render();
+    }
+
+    function setStatusFilter(status) {
+      state.selectedStatus = status;
+      render();
+    }
+
+    function toggleBought(id) {
+      const item = state.items.find(i => i.id === id);
+      if (item) {
+        item.bought = !item.bought;
+        saveState();
+        render();
+      }
+    }
+
+    function changeQty(id, delta) {
+      const item = state.items.find(i => i.id === id);
+      if (item) {
+        item.quantity = Math.max(1, (parseInt(item.quantity, 10) || 1) + delta);
+        saveState();
+        render();
+      }
+    }
+
+    function deleteItem(id) {
+      if (confirm('確定要刪除這項商品嗎？')) {
+        state.items = state.items.filter(i => i.id !== id);
+        saveState();
+        render();
+      }
+    }
+
+    function openAddModal() {
+      const c = COUNTRIES[state.currentCountry];
+      state.editingItem = {
+        id: null,
+        country: state.currentCountry,
+        name: '',
+        category: state.selectedCategory === 'all' ? 'cosmetics' : state.selectedCategory,
+        location: state.selectedStore === 'all' ? (c.defaultStores[0] || '') : state.selectedStore,
+        quantity: 1,
+        price: '',
+        recipient: '自用',
+        priority: 'must',
+        taxFree: true,
+        bought: false,
+        note: '',
+        image: ''
+      };
+      state.modal = 'form';
+      render();
+    }
+
+    function openEditModal(id) {
+      const item = state.items.find(i => i.id === id);
+      if (item) {
+        state.editingItem = { ...item };
+        state.modal = 'form';
+        render();
+      }
+    }
+
+    function openAskModal(id) {
+      const item = state.items.find(i => i.id === id);
+      if (item) {
+        state.askingItem = item;
+        state.modal = 'ask';
+        render();
+      }
+    }
+
+    function openRateModal() {
+      state.quickCalcInput = '';
+      state.modal = 'rate';
+      render();
+    }
+
+    function openBackupModal() {
+      state.modal = 'backup';
+      render();
+    }
+
+    function closeModal() {
+      state.modal = null;
+      state.editingItem = null;
+      state.askingItem = null;
+      render();
+    }
+
+    function saveFormItem(e) {
+      e.preventDefault();
+      const form = e.target;
+      const name = form.itemName.value.trim();
+      if (!name) {
+        alert('請輸入商品名稱！');
+        return;
+      }
+      const newItem = {
+        ...state.editingItem,
+        id: state.editingItem.id || ('item-' + Date.now()),
+        name,
+        category: form.category.value,
+        location: form.location.value.trim() || '未分類店鋪',
+        quantity: Math.max(1, parseInt(form.quantity.value, 10) || 1),
+        price: parseFloat(form.price.value) || 0,
+        recipient: form.recipient.value,
+        priority: form.priority.value,
+        taxFree: form.taxFree.checked,
+        note: form.note.value.trim()
+      };
+
+      if (state.editingItem.id) {
+        state.items = state.items.map(i => i.id === newItem.id ? newItem : i);
+      } else {
+        state.items.unshift(newItem);
+      }
+      saveState();
+      closeModal();
+    }
+
+    function handleImageUpload(input) {
+      if (input.files && input.files[0]) {
+        compressImage(input.files[0], function(base64) {
+          if (state.editingItem) {
+            state.editingItem.image = base64;
+            const previewEl = document.getElementById('form-image-preview');
+            if (previewEl) {
+              previewEl.innerHTML = `<img src="${base64}" class="w-full h-40 object-cover rounded-xl border border-stone-200" />`;
+            }
+          }
+        });
+      }
+    }
+
+    function clearFormImage() {
+      if (state.editingItem) {
+        state.editingItem.image = '';
+        render();
+      }
+    }
+
+    function updateRateFromModal(e) {
+      e.preventDefault();
+      const val = parseFloat(e.target.rateInput.value);
+      if (val && val > 0) {
+        state.rates[state.currentCountry] = val;
+        saveState();
+        closeModal();
+      }
+    }
+
+    function exportData() {
+      const dataStr = JSON.stringify({
+        currentCountry: state.currentCountry,
+        rates: state.rates,
+        items: state.items,
+        exportedAt: new Date().toISOString()
+      }, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `購物清單備份_${ new Date().toISOString().slice(0,10) }.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function importData(input) {
+      if (!input.files || !input.files[0]) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (Array.isArray(parsed.items)) {
+            state.items = parsed.items;
+            if (parsed.rates) state.rates = { ...state.rates, ...parsed.rates };
+            if (parsed.currentCountry) state.currentCountry = parsed.currentCountry;
+            saveState();
+            closeModal();
+            alert('匯入成功！已更新您的購物清單。');
+          } else {
+            alert('檔案格式不正確！');
+          }
+        } catch (err) {
+          alert('讀取備份檔失敗，請確認檔案是否正確。');
+        }
+      };
+      reader.readAsText(input.files[0]);
+    }
+
+    // --- 畫面渲染 ---
+    function render() {
+      const app = document.getElementById('app');
+      const country = COUNTRIES[state.currentCountry];
+      const currentRate = state.rates[state.currentCountry] || country.defaultRate;
+
+      // 取得該國家所有項目
+      const countryItems = state.items.filter(i => i.country === state.currentCountry);
+
+      // 統計所有出現過的購買地點
+      const dynamicStores = Array.from(new Set([
+        ...countryItems.map(i => i.location).filter(Boolean),
+        ...country.defaultStores
+      ]));
+
+      // 篩選項目
+      const filteredItems = countryItems.filter(item => {
+        if (state.selectedCategory !== 'all' && item.category !== state.selectedCategory) return false;
+        if (state.selectedStore !== 'all' && item.location !== state.selectedStore) return false;
+        if (state.selectedStatus === 'pending' && item.bought) return false;
+        if (state.selectedStatus === 'bought' && !item.bought) return false;
+        if (state.searchQuery.trim() !== '') {
+          const q = state.searchQuery.toLowerCase();
+          const matchName = item.name.toLowerCase().includes(q);
+          const matchLoc = (item.location || '').toLowerCase().includes(q);
+          const matchNote = (item.note || '').toLowerCase().includes(q);
+          if (!matchName && !matchLoc && !matchNote) return false;
+        }
+        return true;
+      });
+
+      // 計算預算總計
+      const totalForeign = countryItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
+      const totalTWD = totalForeign * currentRate;
+      const boughtCount = countryItems.filter(i => i.bought).length;
+
+      app.innerHTML = `
+        <!-- 頂部導覽與國家切換 -->
+        <header class="sticky top-0 z-20 bg-[#FAF8F5]/95 backdrop-blur-md border-b border-stone-200/80 px-4 pt-3 pb-2.5">
+          <div class="flex items-center justify-between mb-2.5">
+            <div class="flex items-center gap-2">
+              <span class="text-xl">🧳</span>
+              <div>
+                <h1 class="text-base font-black tracking-tight text-stone-800 leading-none">旅遊購物清單</h1>
+                <p class="text-[11px] text-stone-500 mt-0.5">自動儲存於手機瀏覽器</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button onclick="openRateModal()" class="px-2.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 text-xs font-bold flex items-center gap-1 active:scale-95 transition">
+                <span>💱 匯率 ${currentRate}</span>
+              </button>
+              <button onclick="openBackupModal()" class="p-1.5 rounded-xl bg-stone-100 border border-stone-200 text-stone-600 text-xs font-medium active:scale-95 transition" title="備份與還原">
+                ⚙️
+              </button>
+            </div>
+          </div>
+
+          <!-- 國家切換膠囊 -->
+          <div class="flex gap-1.5 overflow-x-auto hide-scrollbar pb-0.5">
+            ${Object.values(COUNTRIES).map(c => {
+              const count = state.items.filter(i => i.country === c.code).length;
+              const active = state.currentCountry === c.code;
+              return `
+                <button onclick="setCountry('${c.code}')" class="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition ${
+                  active
+                    ? 'bg-stone-800 text-white shadow-sm'
+                    : 'bg-white text-stone-600 border border-stone-200/80'
+                }">
+                  <span>${c.flag} ${c.name}</span>
+                  <span class="px-1.5 py-0.2 rounded-full text-[10px] ${active ? 'bg-stone-700 text-stone-200' : 'bg-stone-100 text-stone-500'}">${count}</span>
+                </button>
+              `;
+            }).join('')}
+          </div>
+        </header>
+
+        <!-- 預算總覽卡片 -->
+        <section class="px-4 pt-3">
+          <div class="bg-gradient-to-br from-stone-800 via-stone-800 to-stone-900 text-white rounded-2xl p-4 card-shadow">
+            <div class="flex justify-between items-start">
+              <div>
+                <p class="text-[11px] text-stone-300 font-medium">${country.flag} ${country.name}清單預估總花費</p>
+                <div class="flex items-baseline gap-1.5 mt-0.5">
+                  <span class="text-xs text-amber-300 font-bold">NT$</span>
+                  <span class="text-2xl font-black tracking-tight text-amber-300">${formatNumber(totalTWD)}</span>
+                </div>
+                <p class="text-xs text-stone-300 mt-0.5">
+                  外幣合計：${country.symbol} ${formatNumber(totalForeign)} <span class="text-[11px] text-stone-400">(${country.currency})</span>
+                </p>
+              </div>
+              <div class="text-right bg-white/10 rounded-xl px-3 py-2 backdrop-blur-sm">
+                <p class="text-[11px] text-stone-300">採購進度</p>
+                <p class="text-base font-black mt-0.5">${boughtCount} <span class="text-xs font-normal text-stone-300">/ ${countryItems.length} 件</span></p>
+              </div>
+            </div>
+
+            <!-- 狀態切換與搜尋列 -->
+            <div class="mt-3 pt-3 border-t border-white/10 flex items-center gap-2">
+              <div class="flex bg-black/25 p-0.5 rounded-lg text-[11px] font-bold">
+                <button onclick="setStatusFilter('all')" class="px-2.5 py-1 rounded-md transition ${state.selectedStatus === 'all' ? 'bg-white text-stone-900' : 'text-stone-300'}">全部</button>
+                <button onclick="setStatusFilter('pending')" class="px-2.5 py-1 rounded-md transition ${state.selectedStatus === 'pending' ? 'bg-white text-stone-900' : 'text-stone-300'}">未買</button>
+                <button onclick="setStatusFilter('bought')" class="px-2.5 py-1 rounded-md transition ${state.selectedStatus === 'bought' ? 'bg-white text-stone-900' : 'text-stone-300'}">已買</button>
+              </div>
+              <div class="relative flex-1">
+                <input
+                  type="text"
+                  placeholder="搜尋商品、店名、備註..."
+                  value="${state.searchQuery}"
+                  oninput="state.searchQuery = this.value; render();"
+                  class="w-full bg-white/10 text-white placeholder-stone-400 text-xs rounded-lg pl-2.5 pr-6 py-1.5 focus:outline-none focus:bg-white/20"
+                />
+                ${state.searchQuery ? `<button onclick="state.searchQuery=''; render();" class="absolute right-2 top-1.5 text-xs text-stone-300">✕</button>` : ''}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 📍 依購買地點快速過濾 (進店模式) -->
+        <section class="px-4 pt-3">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-xs font-bold text-stone-600 flex items-center gap-1">📍 在哪買（點選店名一鍵過濾店內清單）</span>
+            ${state.selectedStore !== 'all' ? `<button onclick="setStore('all')" class="text-[11px] text-amber-700 font-bold">清除篩選</button>` : ''}
+          </div>
+          <div class="flex gap-1.5 overflow-x-auto hide-scrollbar pb-1">
+            <button onclick="setStore('all')" class="px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition ${
+              state.selectedStore === 'all'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'bg-white text-stone-600 border border-stone-200'
+            }">全部店鋪</button>
+            ${dynamicStores.map(store => {
+              const count = countryItems.filter(i => i.location === store && !i.bought).length;
+              const active = state.selectedStore === store;
+              return `
+                <button onclick="setStore('${store.replace(/'/g, "\'")}')" class="px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1 transition ${
+                  active
+                    ? 'bg-amber-600 text-white shadow-sm'
+                    : 'bg-white text-stone-700 border border-stone-200'
+                }">
+                  <span>${store}</span>
+                  ${count > 0 ? `<span class="text-[10px] px-1 rounded ${active ? 'bg-amber-800 text-amber-100' : 'bg-amber-50 text-amber-800'}">${count}</span>` : ''}
+                </button>
+              `;
+            }).join('')}
+          </div>
+        </section>
+
+        <!-- 🏷️ 商品分類篩選 -->
+        <section class="px-4 pt-2">
+          <div class="flex gap-1.5 overflow-x-auto hide-scrollbar pb-1">
+            ${CATEGORIES.map(cat => {
+              const active = state.selectedCategory === cat.id;
+              return `
+                <button onclick="setCategory('${cat.id}')" class="px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition ${
+                  active
+                    ? 'bg-stone-200/90 text-stone-900 font-bold'
+                    : 'text-stone-500 hover:bg-stone-100'
+                }">
+                  ${cat.icon} ${cat.name}
+                </button>
+              `;
+            }).join('')}
+          </div>
+        </section>
+
+        <!-- 商品清單列表 -->
+        <main class="px-4 pt-2 space-y-2.5">
+          ${filteredItems.length === 0 ? `
+            <div class="bg-white rounded-2xl border border-dashed border-stone-300 p-8 text-center my-4">
+              <div class="text-3xl mb-2">🛒</div>
+              <p class="text-sm font-bold text-stone-700">目前沒有符合條件的商品</p>
+              <p class="text-xs text-stone-400 mt-1">點擊右下角「＋ 新增想買商品」開始建立清單吧！</p>
+            </div>
+          ` : filteredItems.map(item => {
+            const cat = getCategoryObj(item.category);
+            const itemTotalForeign = (item.price || 0) * (item.quantity || 1);
+            const itemTotalTWD = itemTotalForeign * currentRate;
+            return `
+              <div class="bg-white rounded-2xl p-3.5 border transition card-shadow ${item.bought ? 'border-stone-200 bg-stone-50/70 opacity-65' : 'border-stone-200/80'}">
+                <div class="flex gap-3">
+                  <!-- 左側：圖片或分類圖示 (點擊可放大問店員) -->
+                  <div onclick="openAskModal('${item.id}')" class="relative w-20 h-20 rounded-xl bg-stone-100 border border-stone-200/70 flex-shrink-0 overflow-hidden cursor-pointer group">
+                    ${item.image
+                      ? `<img src="${item.image}" class="w-full h-full object-cover" alt="${item.name}" />`
+                      : `<div class="w-full h-full flex flex-col items-center justify-center text-stone-400">
+                           <span class="text-2xl">${cat.icon}</span>
+                           <span class="text-[10px] mt-0.5">點擊問店員</span>
+                         </div>`
+                    }
+                    <div class="absolute bottom-0 inset-x-0 bg-black/55 text-white text-[10px] text-center py-0.5 font-medium">
+                      🔍 問店員
+                    </div>
+                  </div>
+
+                  <!-- 中間：商品資訊 -->
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between gap-1">
+                      <div class="flex items-center gap-1 flex-wrap">
+                        ${item.priority === 'must' ? `<span class="px-1.5 py-0.5 text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 rounded">🔥必買</span>` : ''}
+                        <span class="px-1.5 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200/70 rounded">📍 ${item.location}</span>
+                        <span class="px-1.5 py-0.5 text-[10px] font-medium bg-stone-100 text-stone-600 rounded">${item.recipient}</span>
+                        ${item.taxFree ? `<span class="px-1.5 py-0.5 text-[10px] font-medium bg-emerald-50 text-emerald-700 rounded">免稅</span>` : ''}
+                      </div>
+                      <!-- 勾選已買按鈕 -->
+                      <button onclick="toggleBought('${item.id}')" class="w-6 h-6 rounded-lg border flex items-center justify-center flex-shrink-0 transition ${
+                        item.bought ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-stone-300 bg-white text-transparent'
+                      }">
+                        ✓
+                      </button>
+                    </div>
+
+                    <h3 onclick="openEditModal('${item.id}')" class="font-bold text-sm text-stone-800 mt-1 leading-snug cursor-pointer ${item.bought ? 'line-through text-stone-400' : ''}">
+                      ${item.name}
+                    </h3>
+
+                    ${item.note ? `<p class="text-[11px] text-stone-500 mt-0.5 line-clamp-2">📝 ${item.note}</p>` : ''}
+
+                    <!-- 價格與數量列 -->
+                    <div class="flex items-end justify-between mt-2 pt-2 border-t border-stone-100">
+                      <div>
+                        <div class="flex items-baseline gap-1">
+                          <span class="text-xs font-black text-amber-700">≈ NT$ ${formatNumber(itemTotalTWD)}</span>
+                          <span class="text-[11px] text-stone-400">(${country.symbol}${formatNumber(itemTotalForeign)})</span>
+                        </div>
+                        ${item.quantity > 1 ? `<p class="text-[10px] text-stone-400">單價 ${country.symbol}${formatNumber(item.price)} × ${item.quantity}</p>` : ''}
+                      </div>
+
+                      <div class="flex items-center gap-1">
+                        <!-- 數量調整 -->
+                        <div class="flex items-center bg-stone-100 rounded-lg p-0.5">
+                          <button onclick="changeQty('${item.id}', -1)" class="w-6 h-6 rounded-md text-xs font-bold text-stone-600 active:bg-white">−</button>
+                          <span class="px-2 text-xs font-bold text-stone-800">${item.quantity}</span>
+                          <button onclick="changeQty('${item.id}', 1)" class="w-6 h-6 rounded-md text-xs font-bold text-stone-600 active:bg-white">＋</button>
+                        </div>
+                        <button onclick="openEditModal('${item.id}')" class="p-1.5 text-xs text-stone-400 hover:text-stone-700" title="編輯">✏️</button>
+                        <button onclick="deleteItem('${item.id}')" class="p-1.5 text-xs text-stone-400 hover:text-rose-600" title="刪除">🗑️</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </main>
+
+        <!-- 底部懸浮新增按鈕 -->
+        <div class="fixed bottom-5 inset-x-0 z-20 pointer-events-none">
+          <div class="max-w-md mx-auto px-4 flex justify-end">
+            <button onclick="openAddModal()" class="pointer-events-auto bg-stone-900 hover:bg-stone-800 text-white font-bold text-sm px-5 py-3.5 rounded-full shadow-xl flex items-center gap-2 active:scale-95 transition">
+              <span class="text-base leading-none">＋</span>
+              <span>新增想買商品</span>
+            </button>
+          </div>
+        </div>
+
+        ${renderModal(country, currentRate, dynamicStores)}
+      `;
+    }
+
+    function renderModal(country, currentRate, dynamicStores) {
+      if (!state.modal) return '';
+
+      // 1. 新增/編輯商品 Modal
+      if (state.modal === 'form' && state.editingItem) {
+        const item = state.editingItem;
+        const previewTWD = (parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 1) * currentRate;
+
+        return `
+          <div class="fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <div class="bg-[#FAF8F5] w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto p-5 animate-slide-up">
+              <div class="flex items-center justify-between pb-3 border-b border-stone-200">
+                <h2 class="text-base font-black text-stone-800">${item.id ? '✏️ 編輯購物清單' : `➕ 新增購物清單 (${country.flag} ${country.name})`}</h2>
+                <button onclick="closeModal()" class="w-8 h-8 rounded-full bg-stone-200/70 text-stone-600 font-bold">✕</button>
+              </div>
+
+              <form onsubmit="saveFormItem(event)" class="space-y-3.5 mt-3">
+                <!-- 商品照片上傳 -->
+                <div>
+                  <label class="block text-xs font-bold text-stone-700 mb-1.5">📸 商品照片（選填，自動壓縮省空間）</label>
+                  <div id="form-image-preview" class="mb-2">
+                    ${item.image ? `<img src="${item.image}" class="w-full h-40 object-cover rounded-xl border border-stone-200" />` : ''}
+                  </div>
+                  <div class="flex gap-2">
+                    <label class="flex-1 bg-white border border-stone-300 rounded-xl py-2 px-3 text-xs font-bold text-stone-700 text-center cursor-pointer active:bg-stone-100">
+                      📷 選擇照片 / 拍照
+                      <input type="file" accept="image/*" class="hidden" onchange="handleImageUpload(this)" />
+                    </label>
+                    ${item.image ? `<button type="button" onclick="clearFormImage()" class="px-3 py-2 bg-rose-50 text-rose-700 rounded-xl text-xs font-bold">移除照片</button>` : ''}
+                  </div>
+                </div>
+
+                <!-- 商品名稱 -->
+                <div>
+                  <label class="block text-xs font-bold text-stone-700 mb-1">商品名稱 *</label>
+                  <input type="text" name="itemName" required value="${item.name.replace(/"/g, '&quot;')}" placeholder="例如：合利他命 EX Plus、Olive Young 面膜" class="w-full bg-white border border-stone-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-stone-800" />
+                </div>
+
+                <!-- 購買地點 & 商品分類 -->
+                <div class="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label class="block text-xs font-bold text-stone-700 mb-1">📍 購買地點</label>
+                    <input type="text" name="location" list="store-suggestions" value="${item.location.replace(/"/g, '&quot;')}" placeholder="例如：唐吉訶德" class="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-stone-800" />
+                    <datalist id="store-suggestions">
+                      ${dynamicStores.map(s => `<option value="${s}"></option>`).join('')}
+                    </datalist>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-stone-700 mb-1">🏷️ 商品分類</label>
+                    <select name="category" class="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-stone-800">
+                      ${CATEGORIES.filter(c => c.id !== 'all').map(c => `
+                        <option value="${c.id}" ${item.category === c.id ? 'selected' : ''}>${c.icon} ${c.name}</option>
+                      `).join('')}
+                    </select>
+                  </div>
+                </div>
+
+                <!-- 預估外幣單價 & 數量 -->
+                <div class="grid grid-cols-3 gap-2.5">
+                  <div class="col-span-2">
+                    <label class="block text-xs font-bold text-stone-700 mb-1">💰 預估單價 (${country.currency} ${country.symbol})</label>
+                    <input
+                      type="number"
+                      step="any"
+                      name="price"
+                      id="form-price-input"
+                      value="${item.price}"
+                      placeholder="輸入外幣金額"
+                      oninput="document.getElementById('live-twd-calc').innerText = Math.round((parseFloat(this.value)||0) * (parseInt(document.getElementById('form-qty-input').value,10)||1) * ${currentRate}).toLocaleString('zh-TW')"
+                      class="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-stone-800"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-stone-700 mb-1">🔢 數量</label>
+                    <input
+                      type="number"
+                      min="1"
+                      name="quantity"
+                      id="form-qty-input"
+                      value="${item.quantity}"
+                      oninput="document.getElementById('live-twd-calc').innerText = Math.round((parseFloat(document.getElementById('form-price-input').value)||0) * (parseInt(this.value,10)||1) * ${currentRate}).toLocaleString('zh-TW')"
+                      class="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-stone-800"
+                    />
+                  </div>
+                </div>
+
+                <!-- 即時台幣換算提示 -->
+                <div class="bg-amber-50/90 border border-amber-200/80 rounded-xl px-3 py-2 flex items-center justify-between">
+                  <span class="text-xs text-amber-900 font-medium">💱 依匯率 (${currentRate}) 折合台幣總計：</span>
+                  <span class="text-sm font-black text-amber-800">NT$ <span id="live-twd-calc">${formatNumber(previewTWD)}</span></span>
+                </div>
+
+                <!-- 幫誰買 & 優先順序 -->
+                <div class="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label class="block text-xs font-bold text-stone-700 mb-1">🎁 購買對象</label>
+                    <select name="recipient" class="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-sm">
+                      ${RECIPIENTS.map(r => `<option value="${r}" ${item.recipient === r ? 'selected' : ''}>${r}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-stone-700 mb-1">⚡ 優先程度</label>
+                    <select name="priority" class="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-sm">
+                      <option value="must" ${item.priority === 'must' ? 'selected' : ''}>🔥 必買清單</option>
+                      <option value="normal" ${item.priority === 'normal' ? 'selected' : ''}>✨ 有看到再買</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- 備註與免稅勾選 -->
+                <div>
+                  <label class="block text-xs font-bold text-stone-700 mb-1">📝 規格 / 顏色 / 比價備註</label>
+                  <input type="text" name="note" value="${(item.note || '').replace(/"/g, '&quot;')}" placeholder="例如：限定色 02、未稅價超過5000可退稅" class="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-sm" />
+                </div>
+
+                <label class="flex items-center gap-2 pt-1 cursor-pointer">
+                  <input type="checkbox" name="taxFree" ${item.taxFree ? 'checked' : ''} class="w-4 h-4 rounded text-stone-800" />
+                  <span class="text-xs font-bold text-stone-700">標記為可退稅 / 免稅商品 (Tax-Free)</span>
+                </label>
+
+                <div class="pt-3 flex gap-2">
+                  <button type="button" onclick="closeModal()" class="flex-1 py-3 rounded-xl border border-stone-300 text-stone-700 font-bold text-sm">取消</button>
+                  <button type="submit" class="flex-1 py-3 rounded-xl bg-stone-900 text-white font-bold text-sm shadow-md">儲存商品</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        `;
+      }
+
+      // 2. 問店員展示大字卡 Modal
+      if (state.modal === 'ask' && state.askingItem) {
+        const item = state.askingItem;
+        const cat = getCategoryObj(item.category);
+        return `
+          <div onclick="closeModal()" class="fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4">
+            <div onclick="event.stopPropagation()" class="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-slide-up">
+              <div class="bg-stone-900 text-white p-4 text-center">
+                <p class="text-xs text-amber-300 font-bold mb-1">${country.askSub}</p>
+                <p class="text-lg font-black leading-snug">${country.askText}</p>
+              </div>
+              <div class="p-5 text-center">
+                <div class="w-full h-60 rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center overflow-hidden mb-4">
+                  ${item.image
+                    ? `<img src="${item.image}" class="w-full h-full object-contain" />`
+                    : `<span class="text-6xl">${cat.icon}</span>`
+                  }
+                </div>
+                <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 mb-1">📍 ${item.location}</span>
+                <h3 class="text-xl font-black text-stone-900 leading-snug">${item.name}</h3>
+                ${item.note ? `<p class="text-xs text-stone-500 mt-1">${item.note}</p>` : ''}
+                <div class="mt-4 inline-flex items-center gap-2 bg-stone-100 px-4 py-2 rounded-xl">
+                  <span class="text-xs font-bold text-stone-600">需求數量 (Qty)：</span>
+                  <span class="text-xl font-black text-stone-900">${item.quantity}</span>
+                </div>
+                <button onclick="closeModal()" class="mt-5 w-full py-3 rounded-xl bg-stone-900 text-white font-bold text-sm">關閉展示卡</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // 3. 匯率設定與隨手換算機 Modal
+      if (state.modal === 'rate') {
+        return `
+          <div onclick="closeModal()" class="fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4">
+            <div onclick="event.stopPropagation()" class="bg-[#FAF8F5] w-full max-w-sm rounded-3xl p-5 shadow-2xl animate-slide-up">
+              <div class="flex items-center justify-between pb-3 border-b border-stone-200">
+                <h2 class="text-base font-black text-stone-800">💱 匯率設定與隨手試算 (${country.flag} ${country.name})</h2>
+                <button onclick="closeModal()" class="w-8 h-8 rounded-full bg-stone-200/70 text-stone-600 font-bold">✕</button>
+              </div>
+
+              <!-- 隨手試算機 -->
+              <div class="mt-3 bg-white p-3.5 rounded-2xl border border-stone-200">
+                <label class="block text-xs font-bold text-stone-600 mb-1.5">🧮 逛街隨手換算（輸入 ${country.currency} 標價）</label>
+                <div class="flex items-center gap-2">
+                  <input
+                    type="number"
+                    placeholder="輸入外幣金額..."
+                    oninput="document.getElementById('quick-calc-result').innerText = Math.round((parseFloat(this.value)||0) * ${currentRate}).toLocaleString('zh-TW')"
+                    class="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-base font-bold focus:outline-none"
+                  />
+                </div>
+                <div class="mt-2 flex items-baseline justify-between text-amber-800 bg-amber-50 px-3 py-2 rounded-xl">
+                  <span class="text-xs font-bold">折合台幣約：</span>
+                  <span class="text-lg font-black">NT$ <span id="quick-calc-result">0</span></span>
+                </div>
+              </div>
+
+              <!-- 修改匯率 -->
+              <form onsubmit="updateRateFromModal(event)" class="mt-4 space-y-3">
+                <div>
+                  <label class="block text-xs font-bold text-stone-700 mb-1">修改 1 ${country.currency} 兌換台幣匯率</label>
+                  <input type="number" step="0.0001" name="rateInput" value="${currentRate}" class="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-sm font-bold" />
+                </div>
+                <div class="flex gap-2">
+                  <button type="button" onclick="state.rates['${country.code}'] = ${country.defaultRate}; saveState(); closeModal();" class="px-3 py-2.5 rounded-xl border border-stone-300 text-xs font-bold text-stone-600">恢復預設 (${country.defaultRate})</button>
+                  <button type="submit" class="flex-1 py-2.5 rounded-xl bg-stone-900 text-white text-xs font-bold">儲存匯率</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        `;
+      }
+
+      // 4. 備份與還原 Modal
+      if (state.modal === 'backup') {
+        return `
+          <div onclick="closeModal()" class="fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4">
+            <div onclick="event.stopPropagation()" class="bg-[#FAF8F5] w-full max-w-sm rounded-3xl p-5 shadow-2xl animate-slide-up">
+              <div class="flex items-center justify-between pb-3 border-b border-stone-200">
+                <h2 class="text-base font-black text-stone-800">⚙️ 跨裝置備份與還原</h2>
+                <button onclick="closeModal()" class="w-8 h-8 rounded-full bg-stone-200/70 text-stone-600 font-bold">✕</button>
+              </div>
+              <div class="mt-3 space-y-3 text-xs text-stone-600 leading-relaxed">
+                <p>清單資料會自動儲存在您目前的手機瀏覽器中。若您在電腦上先整理好清單、想傳到手機上，或是想備份留存，可以使用匯出與匯入功能：</p>
+                <button onclick="exportData()" class="w-full py-3 rounded-xl bg-stone-900 text-white font-bold text-sm flex items-center justify-center gap-2 shadow">
+                  <span>📥 匯出購物清單備份檔 (.json)</span>
+                </button>
+                <label class="w-full py-3 rounded-xl bg-white border border-stone-300 text-stone-800 font-bold text-sm flex items-center justify-center gap-2 cursor-pointer">
+                  <span>📤 匯入備份檔還原清單</span>
+                  <input type="file" accept=".json" class="hidden" onchange="importData(this)" />
+                </label>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      return '';
+    }
+
+    // 啟動應用程式
+    loadState();
+    render();
+  </script>
+</body>
+</html>
